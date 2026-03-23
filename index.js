@@ -3,8 +3,12 @@ import { Resend } from 'resend'
 import cors from 'cors'
 import 'dotenv/config'
 import { confirmationEmail } from './Confirmationemail.js'
+import { notificationEmail } from './NotificationEmail.js'
 
 const app = express()
+
+// ─── YOUR EMAIL (receives all form submissions) ────────
+const OWNER_EMAIL = 'viren0210@gmail.com'
 
 // ─── MIDDLEWARE ─────────────────────────────────────────
 app.use(express.json())
@@ -72,12 +76,24 @@ app.post('/contact', rateLimit, async (req, res) => {
     const cleanMessage = sanitize(message)
 
     try {
-        await resend.emails.send({
-            from: 'onboarding@resend.dev',
-            to: cleanEmail,
-            subject: `Hey ${cleanName}, I got your message!`,
-            html: confirmationEmail(cleanName, cleanMessage)  // ← clean one liner
-        })
+        // ── send BOTH emails in parallel ────────────────
+        await Promise.all([
+            // 1️⃣  Notification → YOU (always goes to viren0210@gmail.com)
+            resend.emails.send({
+                from: 'onboarding@resend.dev',
+                to: OWNER_EMAIL,
+                subject: `📩 New message from ${cleanName}`,
+                html: notificationEmail(cleanName, cleanEmail, cleanMessage)
+            }),
+
+            // 2️⃣  Confirmation → the USER who submitted the form
+            resend.emails.send({
+                from: 'onboarding@resend.dev',
+                to: cleanEmail,
+                subject: `Hey ${cleanName}, I got your message!`,
+                html: confirmationEmail(cleanName, cleanMessage)
+            })
+        ])
 
         res.json({ success: true })
 
