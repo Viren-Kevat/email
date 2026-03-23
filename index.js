@@ -1,5 +1,6 @@
 import express from 'express'
 import nodemailer from 'nodemailer'
+import { Resend } from 'resend'
 import cors from 'cors'
 import 'dotenv/config'
 import { confirmationEmail } from './Confirmationemail.js'
@@ -8,9 +9,12 @@ import { notificationEmail } from './NotificationEmail.js'
 const app = express()
 
 // ─── YOUR EMAIL (receives all form submissions) ────────
-const OWNER_EMAIL = process.env.GMAIL_USER
+const OWNER_EMAIL = 'viren0210@gmail.com'
 
-// ─── NODEMAILER GMAIL TRANSPORT ─────────────────────────
+// ─── RESEND CLIENT (for notification to you) ───────────
+const resend = new Resend(process.env.RESEND_API_KEY)
+
+// ─── NODEMAILER GMAIL (for confirmation to user) ───────
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
@@ -81,30 +85,41 @@ app.post('/contact', rateLimit, async (req, res) => {
     const cleanEmail = sanitize(email)
     const cleanMessage = sanitize(message)
 
+    // ── send emails independently (one failing won't break the other) ──
+    const results = { notificationSent: false, confirmationSent: false }
+
+    // 1️⃣  Notification → YOU via Resend (proven working on Render)
     try {
-        // ── send BOTH emails in parallel ────────────────
-        await Promise.all([
-            // 1️⃣  Notification → YOU (always goes to your Gmail)
-            transporter.sendMail({
-                from: `"Portfolio Contact" <${OWNER_EMAIL}>`,
-                to: OWNER_EMAIL,
-                subject: `📩 New message from ${cleanName}`,
-                html: notificationEmail(cleanName, cleanEmail, cleanMessage)
-            }),
-
-            // 2️⃣  Confirmation → the USER who submitted the form
-            transporter.sendMail({
-                from: `"Viren Kevat" <${OWNER_EMAIL}>`,
-                to: cleanEmail,
-                subject: `Hey ${cleanName}, I got your message!`,
-                html: confirmationEmail(cleanName, cleanMessage)
-            })
-        ])
-
-        res.json({ success: true })
-
+        await resend.emails.send({
+            from: 'onboarding@resend.dev',
+            to: OWNER_EMAIL,
+            subject: `📩 New message from ${cleanName}`,
+            html: notificationEmail(cleanName, cleanEmail, cleanMessage)
+        })
+        results.notificationSent = true
+        console.log('✅ Notification email sent to owner')
     } catch (err) {
-        console.error('Email error:', err)
+        console.error('❌ Notification email failed (Resend):', err.message)
+    }
+
+    // 2️⃣  Confirmation → the USER via Nodemailer/Gmail
+    try {
+        await transporter.sendMail({
+            from: `"Viren Kevat" <${process.env.GMAIL_USER}>`,
+            to: cleanEmail,
+            subject: `Hey ${cleanName}, I got your message!`,
+            html: confirmationEmail(cleanName, cleanMessage)
+        })
+        results.confirmationSent = true
+        console.log('✅ Confirmation email sent to user:', cleanEmail)
+    } catch (err) {
+        console.error('❌ Confirmation email failed (Gmail):', err.message)
+    }
+
+    // ── respond based on results ────────────────────────
+    if (results.notificationSent || results.confirmationSent) {
+        res.json({ success: true })
+    } else {
         res.status(500).json({ error: 'Failed to send. Try again.' })
     }
 })
@@ -118,4 +133,6 @@ app.use((req, res) => {
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
     console.log(`✅ Contact API running on port ${PORT}`)
+    console.log(`📧 Notification → Resend → ${OWNER_EMAIL}`)
+    console.log(`📧 Confirmation → Gmail SMTP → ${process.env.GMAIL_USER}`)
 })
