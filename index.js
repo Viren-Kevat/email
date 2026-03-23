@@ -16,11 +16,17 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 
 // ─── NODEMAILER GMAIL (for confirmation to user) ───────
 const transporter = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
     auth: {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_APP_PASSWORD,
-    }
+    },
+    tls: {
+        rejectUnauthorized: false
+    },
+    family: 4  // ← force IPv4 (Render doesn't support IPv6)
 })
 
 // ─── MIDDLEWARE ─────────────────────────────────────────
