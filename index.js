@@ -1,5 +1,5 @@
 import express from 'express'
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 import cors from 'cors'
 import 'dotenv/config'
 import { confirmationEmail } from './Confirmationemail.js'
@@ -8,7 +8,16 @@ import { notificationEmail } from './NotificationEmail.js'
 const app = express()
 
 // ─── YOUR EMAIL (receives all form submissions) ────────
-const OWNER_EMAIL = 'viren0210@gmail.com'
+const OWNER_EMAIL = process.env.GMAIL_USER
+
+// ─── NODEMAILER GMAIL TRANSPORT ─────────────────────────
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD,
+    }
+})
 
 // ─── MIDDLEWARE ─────────────────────────────────────────
 app.use(express.json())
@@ -48,9 +57,6 @@ const rateLimit = (req, res, next) => {
 // strips HTML tags from user input to prevent injection
 const sanitize = str => str.replace(/<[^>]*>/g, '').trim()
 
-// ─── RESEND CLIENT ──────────────────────────────────────
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 // ─── HEALTH CHECK ───────────────────────────────────────
 app.get('/', (req, res) => {
     res.json({ status: '✅ Contact API is running' })
@@ -78,17 +84,17 @@ app.post('/contact', rateLimit, async (req, res) => {
     try {
         // ── send BOTH emails in parallel ────────────────
         await Promise.all([
-            // 1️⃣  Notification → YOU (always goes to viren0210@gmail.com)
-            resend.emails.send({
-                from: 'onboarding@resend.dev',
+            // 1️⃣  Notification → YOU (always goes to your Gmail)
+            transporter.sendMail({
+                from: `"Portfolio Contact" <${OWNER_EMAIL}>`,
                 to: OWNER_EMAIL,
                 subject: `📩 New message from ${cleanName}`,
                 html: notificationEmail(cleanName, cleanEmail, cleanMessage)
             }),
 
             // 2️⃣  Confirmation → the USER who submitted the form
-            resend.emails.send({
-                from: 'onboarding@resend.dev',
+            transporter.sendMail({
+                from: `"Viren Kevat" <${OWNER_EMAIL}>`,
                 to: cleanEmail,
                 subject: `Hey ${cleanName}, I got your message!`,
                 html: confirmationEmail(cleanName, cleanMessage)
@@ -98,7 +104,7 @@ app.post('/contact', rateLimit, async (req, res) => {
         res.json({ success: true })
 
     } catch (err) {
-        console.error('Resend error:', err)
+        console.error('Email error:', err)
         res.status(500).json({ error: 'Failed to send. Try again.' })
     }
 })
