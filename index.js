@@ -1,3 +1,6 @@
+import dns from 'dns'
+dns.setDefaultResultOrder('ipv4first')  // Render doesn't support IPv6
+
 import express from 'express'
 import nodemailer from 'nodemailer'
 import { Resend } from 'resend'
